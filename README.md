@@ -7,9 +7,10 @@ AngularJS Best practices
 Pour tous les éléménts nommés, en JS, CSS et pour les identifieurs spécifiques à angular
 Par exemple:
 
-* Noms de services: pas de préfixe $ (réservé à angular), camelCase (ex: ``catalogService``)
+* Noms de services: pas de préfixe $ (réservé à angular), camelCase (ex: ``catalogService``) 
 * Noms de classes CSS: tiret-case sans majuscules (``button-primary``)
 * ID d'éléments: camelCase
+* Noms d'évènements propagés sur les scopes : camelCase, en préfixant par un domaine (``Map.previewUpdated``)
 
 ### Séparer l'application en modules fonctionnels
 Utiliser les modules fonctionnels pour regrouper un ensemble de composants (directives, controlleurs, filtrer, services) avec une logique
@@ -32,6 +33,11 @@ Cette séparation technique peut apparaitre en revanche dans l'arborescence de fi
 	* data.js
 
 
+	
+### Préfixer les filtres et directives
+
+
+	
 ## Utilisation des composants angular
 
 ### Ne Jamais référencer le DOM depuis les controllers
@@ -81,26 +87,114 @@ Il faut alors capter l'évènement de destruction du scope pour appeler les bonnes
 		});
 	}
 
+### Garder des controlleurs simples
 
+Essayez de garder des controlleurs petits et simples (voir aussi le tip suivant), avec peu de responsabilités. 
 
+Un objectif est de par exemple ré-utiliser un controlleur avec plusieurs vues HTML différentes : une vue mobile et vue desktop sont un bon
+cas d'école. 
 
 ### Encapsuler les modifications de données dans des services
 
+Une règle est de garder la logique de présentation/navigation dans les controlleurs et la logique métier dans les services (communiquant 
+avec d'éventuels services distant au besoin).
+
+
 ### Avoir des références de modèles immuables
 
-### Préfixer les filtres et directives
+Deux raisons 
 
+1. avoir une donnée maitrisée par un service central et accessible en lecture dans les controlleurs et dans les scopes
+2. modifier une donnée dans un scope parent
+
+Pourquoi ? Dans le premier cas, si un service est responsable d'une donnée, il la présentera comme un membre du service et celle-ci
+sera récupéré par le controlleur.
+
+	function MyController($scope, myService) {
+		$scope.model = myService.model;
+	}
+	
+Le code suivant ne sera executé qu'une seule fois à l'initialisation du service. Si la référence est modifiée à un moment ultérieur 
+(chargement asynchrone, ...), le scope aura une ancienne version du model qui ne sera plus bonne. Pas besoin de passer par une gestion
+d'évènement pour cela : il suffit de renvoyer toujours une même référence immuable et le binding sur des attributs de modèle se chargera
+du reste.
+
+	<span>{{model.firstName}}</span>
+	
+	Dans le service:
+	
+	service.populateModel = function() {
+		service.model.firstName = '...';
+		// et pas service.model = {firstName: '...'};
+	};
+
+Attention, le raccourci consistant à injecter directement le modele dans le scope est franchement à bannir :
+
+	function MyController($scope, myService) {
+		$scope.service = myService;
+	}
+	
+	<span>{{service.model.firstName}}</span>
+	
+
+Le second cas est une particularité de la gestion de l'héritage des scopes. Imaginons les code suivantes:
+
+	<span>{{clicked}}</span><a href="" ng-click="clicked = 'VRAI'">click me</a>
+	
+Pour évaluer le premier binding ``{{clicked}}``, la variable est d'abord évaluée dans le scope courant, puis si celle-ci n'est pas définie
+dans le scope parent et ainsi de suite jusqu'au scope racine. 
+Imaginons que dans notre cas la variable soit définie dans le scope racine. Le click, ne va pas s'appliquer à la variable {{clicked}} du scope
+dans lequel elle est définie, mais directmenet dans le scope courant !
+
+Avant:
+	
+	rootScope	clicked='FAUX'
+	|
+	scope		/
+	
+Après
+	
+	rootScope	clicked='FAUX'
+	|
+	scope		clicked='VRAI'
+	
+D'où un gros problème si d'autres scopes 'frangins' du scope courant utilisent également la variable ``clicked``.
+
+La solution consiste à encapsuler les attributs modifiés dans un object dont la référence sera immuable :
+
+	<span>{{wrapper.clicked}}</span><a href="" ng-click="wrapper.clicked = 'VRAI'">click me</a>
+
+Avant:
+	
+	rootScope	wrapper { clicked='FAUX' }
+	|
+	scope		/
+	
+Après
+	
+	rootScope	wrapper { clicked='VRAI' }
+	|
+	scope		/
+	
+
+
+
+	
+	
 ### Passer dans le scope le plus vite possible
 
-### Garder des controlleurs simples
-
 ### Utiliser les filtres pour le formattage
+
 
 ### Comment communiquer avec un scope 'voisin'
 Events ou service
 
 ### Utiliser les promises
 exemple du cache
+
+### Utiliser les primitives angular
+.copy, .extend, isString etc
+
 
 ## UI
 
