@@ -36,7 +36,13 @@ Cette séparation technique peut apparaitre en revanche dans l'arborescence de fi
 	
 ### Préfixer les filtres et directives
 
+Afin d'éviter toute collisions d'éléments nommés dans les templates, il est prudent de préfixer toutes les directives et tous les filtres
+spécifiques à un projet.
 
+	<pwet-button-panel label="{{user | pwetCamelize}}"></pwet-button-panel>
+	
+
+### Utiliser des modules
 	
 ## Utilisation des composants angular
 
@@ -87,19 +93,6 @@ Il faut alors capter l'évènement de destruction du scope pour appeler les bonnes
 		});
 	}
 
-### Garder des controlleurs simples
-
-Essayez de garder des controlleurs petits et simples (voir aussi le tip suivant), avec peu de responsabilités. 
-
-Un objectif est de par exemple ré-utiliser un controlleur avec plusieurs vues HTML différentes : une vue mobile et vue desktop sont un bon
-cas d'école. 
-
-### Encapsuler les modifications de données dans des services
-
-Une règle est de garder la logique de présentation/navigation dans les controlleurs et la logique métier dans les services (communiquant 
-avec d'éventuels services distant au besoin).
-
-
 ### Avoir des références de modèles immuables
 
 Deux raisons 
@@ -121,14 +114,14 @@ du reste.
 
 	<span>{{model.firstName}}</span>
 	
-	Dans le service:
+Dans le service:
 	
 	service.populateModel = function() {
 		service.model.firstName = '...';
 		// et pas service.model = {firstName: '...'};
 	};
 
-Attention, le raccourci consistant à injecter directement le modele dans le scope est franchement à bannir :
+Attention, le raccourci consistant à injecter directement le service dans le scope est franchement à bannir :
 
 	function MyController($scope, myService) {
 		$scope.service = myService;
@@ -137,54 +130,118 @@ Attention, le raccourci consistant à injecter directement le modele dans le scop
 	<span>{{service.model.firstName}}</span>
 	
 
-Le second cas est une particularité de la gestion de l'héritage des scopes. Imaginons les code suivantes:
+Le second cas est une particularité de la gestion de l'héritage des scopes. Imaginons le code suivant:
 
 	<span>{{clicked}}</span><a href="" ng-click="clicked = 'VRAI'">click me</a>
 	
 Pour évaluer le premier binding ``{{clicked}}``, la variable est d'abord évaluée dans le scope courant, puis si celle-ci n'est pas définie
 dans le scope parent et ainsi de suite jusqu'au scope racine. 
 Imaginons que dans notre cas la variable soit définie dans le scope racine. Le click, ne va pas s'appliquer à la variable {{clicked}} du scope
-dans lequel elle est définie, mais directmenet dans le scope courant !
+dans lequel elle est définie, mais directement dans le scope courant !
 
 Avant:
 	
 	rootScope	clicked='FAUX'
+	^
 	|
 	scope		/
 	
 Après
 	
 	rootScope	clicked='FAUX'
+	^
 	|
 	scope		clicked='VRAI'
 	
 D'où un gros problème si d'autres scopes 'frangins' du scope courant utilisent également la variable ``clicked``.
 
-La solution consiste à encapsuler les attributs modifiés dans un object dont la référence sera immuable :
+La solution consiste à encapsuler les attributs modifiés dans un objet dont la référence sera immuable :
 
 	<span>{{wrapper.clicked}}</span><a href="" ng-click="wrapper.clicked = 'VRAI'">click me</a>
 
 Avant:
 	
 	rootScope	wrapper { clicked='FAUX' }
+	^
 	|
 	scope		/
 	
 Après
 	
 	rootScope	wrapper { clicked='VRAI' }
+	^
 	|
 	scope		/
 	
 
+### Encapsuler les modifications de données dans des services
+
+Le second problème du point précédent peut être évité en n'utilisant pas de données provenant de scopes parents ou du scope racine
+mais en passant par des services.
 
 
+### Garder des controlleurs simples
+
+Essayez de garder des controlleurs petits et simples, avec peu de responsabilités. 
+
+Un objectif est de par exemple ré-utiliser un controlleur avec plusieurs vues HTML différentes : une vue mobile et une vue desktop sont un bon
+cas d'école. Seul le code HTML/CSS va changer mais les controlleurs et services seront entièrement réutilisés.
+
+Une règle est de garder la logique de présentation/navigation dans les controlleurs et la logique métier dans les services (communiquant 
+avec d'éventuels services distant au besoin).
 	
 	
 ### Passer dans le scope le plus vite possible
 
+Afin de laisser angular executer le bindings, il faut que les évènements utilisateurs (susceptibles de modifier le résultat du binding) provoquent
+un rafraichissement. C'est la finalité de la méthode ``$apply`` de scope qui executent un bloc de code puis ré-évalue le binding.
+
+	link: function(scope, elt, attrs) {
+		elt.find('a').on('click', function(){
+			scope.$apply(function(){
+				// unfuck the event
+			});
+		});
+	}
+
+Cette méthode est souvent appellée en réaction à un évènement extérieur non encapsulé par angular (comme le font ng-click, $http, etc). 
+0Vu qu'angular est souvent très mécontent lors de l'imbrication des $apply, le plus simple est de le faire le plus vite possible. 
+Cela afin d'avoir la liberté d'esprit et le confort de se dire que tout le code qu'on écrit se trouve dans le contexte d'éxecution du scope
+sans se poser de questions ...
+
+En dernier recours on peut récupérer $rootScope.$$phase qui est vrai lorsque l'on est dans un $apply(), falsy sinon
+
+
 ### Utiliser les filtres pour le formattage
 
+Les filtres angular peuvent servir à toutes sortes de formattages, en évitant de polluer le scope avec des fonction du genre :
+
+	$scope.userLabel = function(user) {
+		return user.firstName + ' ' + user.lastName;
+	};
+	
+Ecrire plutôt un filtre :
+
+	angular.module(...).filter('userLabel', function() {
+		return function(user) {
+			return user.firstName + ' ' + user.lastName;
+		}
+	});
+
+Ce qui est tout de suite plus clair dans la vue:
+
+	<span>bonjour {{user | userLabel }}</span>
+	
+L'avantage c'est que ce code de formattage est tout de suite mutualisé et injectable dans tous les autres composants du framework
+
+	function MyService($filter) {
+		var filterFn = $filter('userLabel');		// get the filter
+		console.log(filterFn(user));
+	}
+
+
+
+### Router sans être dérouté
 
 ### Comment communiquer avec un scope 'voisin'
 Events ou service
